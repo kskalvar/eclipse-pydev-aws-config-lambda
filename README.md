@@ -10,3 +10,8 @@ AWS Lambda functions built on Python 2.7 will not have all necessary libraries i
 cd eclipse-pydev-aws-config-lambda
 pip install requests -t .
 ```
+
+```
+cd eclipse-pydev-aws-config-lambda
+zip -r ../aws-config-lambda.zip .
+```
