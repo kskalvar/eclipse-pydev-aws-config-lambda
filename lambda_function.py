@@ -5,17 +5,21 @@ import time
 import boto3
 import elastic
 
+import os
 import gzip
-
+from urllib import unquote
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-destination="https://search-aws-config-es-vhlcfftjvj4skn3wlpweyrb5eq.us-east-1.es.amazonaws.com"
+destination = None
 DOWNLOADED_SNAPSHOT_FILE_NAME = "/tmp/configsnapshot" + str(time.time()) + ".json.gz"
 
 def lambda_handler(event, context):
     # TODO implement
+    
+    logger.info("lambda_function: aws_confing_es_endpoint: " + os.environ['aws_config_es_endpoint'])
+    destination=os.environ['aws_config_es_endpoint']
     
     iso_now_time = datetime.datetime.now().isoformat()
     logger.info("lambda_function: Snapshot Time: " + str(iso_now_time))
@@ -27,41 +31,40 @@ def lambda_handler(event, context):
     logger.info("lambda_function: bucket: " + bucket)
     
     snapshot_file_path = event['Records'][0]['s3']['object']['key']
-    snapshot_file_path2 = snapshot_file_path.encode("utf-8")
-    logger.info("lambda_function: snapshot_file_path: " + snapshot_file_path2)
+    snapshot_file_path_unquote =  unquote(str(snapshot_file_path))
+    logger.info("lambda_function: snapshot_file_path_unquote: " + snapshot_file_path_unquote)
     
     s3conn = boto3.resource('s3')
-    s3conn.meta.client.download_file(bucket, snapshot_file_path2, DOWNLOADED_SNAPSHOT_FILE_NAME)
+    s3conn.meta.client.download_file(bucket, snapshot_file_path_unquote, DOWNLOADED_SNAPSHOT_FILE_NAME)
     
     es=elastic.ElasticSearch(connections=destination, log=None)
     es.set_not_analyzed_template()
     
     data = None
-    if "_ConfigSnapshot_" in snapshot_file_path2:
-        logger.info("lambda_function: checking if gzip ConfigSnapshot: " + snapshot_file_path2)
+    if "_ConfigSnapshot_" in snapshot_file_path_unquote:
+        logger.info("lambda_function: checking if compressed ConfigSnapshot: " + snapshot_file_path_unquote)
         
         with gzip.open(DOWNLOADED_SNAPSHOT_FILE_NAME, 'rb') as dataFile:
             try:
-                logger.info("lambda_function: gzip file")
                 data = json.load(dataFile)
                 load_data_into_es(data, iso_now_time, es)
             except Exception as e:
-                logger.info("lambda_function: Not gzip file")
+                logger.info("lambda_function: compressed: " + e.message)
     else:
         logger.info("lambda_function: Not a Config Snapshot file!")
    
    
-    if "_ConfigSnapshot_" in snapshot_file_path2:
-        logger.info("lambda_function: checking if uncompressed ConfigSnapshot: " + snapshot_file_path2)
+    if "_ConfigSnapshot_" in snapshot_file_path_unquote:
+        logger.info("lambda_function: checking if uncompressed ConfigSnapshot: " + snapshot_file_path_unquote)
         
         with open(DOWNLOADED_SNAPSHOT_FILE_NAME) as dataFile:
             try:
                 data = json.load(dataFile)
                 load_data_into_es(data, iso_now_time, es)
             except Exception as e:
-                logger.info("lambda_function: json.load failed: " + e.message)
+                logger.info("lambda_function: uncompressed: " + e.message)
     else:
-        logger.info("lambda_function: Not Config Snapshot file!")
+        logger.info("lambda_function: Not a Config Snapshot file!")
    
     return
         
